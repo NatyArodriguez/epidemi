@@ -1,6 +1,7 @@
 # Ignorar carpeta del entorno virtual
 bin/
 lib/
+share/
 include/
 pyvenv.cfg
 
