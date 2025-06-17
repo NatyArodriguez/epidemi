@@ -1,0 +1,11 @@
+# Ignorar carpeta del entorno virtual
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# Ignorar archivos temporales
+*.pyc
+__pycache__/
+
+# Pero NO ignorar otros archivos ni carpetas del proyecto
