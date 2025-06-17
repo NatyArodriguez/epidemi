@@ -1,0 +1,16 @@
+tox
+ipdb
+
+flake8
+flake8-black
+flake8-builtins
+flake8-import-order
+
+numpy
+pandas
+scikit-learn
+scipy
+
+pytest
+coverage
+pytest-cov
