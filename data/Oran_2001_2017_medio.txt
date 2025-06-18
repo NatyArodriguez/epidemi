@@ -1,4 +1,4 @@
-epitmin	tmax	tmean	tmedian	rain	hrm	hr
+tmin	tmax	tmean	tmedian	rain	hrm	hr
 21.8	33.9	27.6	27.6	3	72	70
 22.1	33.4	27.5	27.5	16	71	71
 21.4	33.1	26.4	26.3	5	74	74
