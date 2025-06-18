@@ -29,6 +29,8 @@ H_t  = 24.
 hogares = 17633
 poblacion = 75697
 
+days = np.arange('2001-01-01','2023-01-01', dtype='datetime64[D]')
+oran = np.loadtxt('data/ORAN_2001_2022.txt', skiprows=1)
 # ###FUNCIONES A UTILIZAR ####FUNCIONES A UTILIZAR ####FUNCIONES A UTILIZAR
 
 def moving_average(x, w):
@@ -154,13 +156,13 @@ def calculo_EV(t,Tm,V_E,G_T):
             k_VE_1          =	( media_VE_1*media_VE_1)/var_VE_1
             theta_VE_1      =	var_VE_1 / media_VE_1
             mu_V_1          =	muerte_V(T_1)*MU_MOSQUITA_ADULTA
-            count_s         = 	j #importante
+            count_s         = 	j # importante
             sigma_U_T[j]    = 	sigma_V_1*Fbar(t, count_s , k_VE_1, theta_VE_1)*suv_exp(t, count_s, mu_V_1)
             mu_U_T[j]       = 	mu_V_1*Fbar(t, count_s , k_VE, theta_VE)*suv_exp(t, count_s, mu_V_1)
             U_T[j]          = 	Fbar(t, count_s , k_VE, theta_VE)*suv_exp(t, count_s, mu_V_1)
             
         for j in range(1,tt):
-            #print(j)
+            # print(j)
             T_1	            =	Tm[int(j-1)] 
             media_VE_1		=	0.1216*T_1*T_1 - 8.66*T_1 + 154.79
             sigma_V_1		=	1./media_VE_1 
@@ -213,3 +215,279 @@ def runge(f,t,h,X,args=()):
     salida = X + (1./6.)*( k1 + 2.*k2 + 2.*k3 + k4 )
     
     return salida
+
+
+def cases(date, amount, season):
+    u = np.datetime64(season[0])
+    v = np.datetime64(season[1])
+    z = (v-u).astype(int) + 1
+    
+    enter = (np.datetime64(date)-u).astype(int)
+    
+    aux = np.zeros(z)
+    aux[enter] = amount
+    return aux
+
+
+
+# ############################### MODELO PARA LA ODE ###############################
+def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
+    
+    dv = np.zeros(13)
+    
+    tt = int(t)
+    
+    E_D 	=	v[0]
+    E_W		=	v[1]
+    L		=	v[2]
+    P		=	v[3]
+    M		=	v[4]
+    V		=	v[5]
+    V_S		=	v[6] 
+    V_E		=	v[7] 
+    V_I		=	v[8] 
+    H_S		=	v[9] 
+    H_E		=	v[10] 
+    H_I		=	v[11] 
+    H_R		=	v[12]
+    
+    Tm      = Tmean[tt]
+    
+    rain    = Rain[tt]
+    
+    Tmin    = Tmin[tt]
+    
+    beta_day_theta_0 = beta_day*theta_T(Tm)
+    
+    fR      = egg_wet(rain)
+    
+    KL      = hogares*( Kmax*H_t/Hmax + 1.0 )
+    
+    m_E_C_G = 0.24*rate_mx(Tm, 10798.,100000.,14184.)*C_Gillet(L,KL)
+    
+    m_L     = 0.2088*rate_mx(Tm, 26018.,55990.,304.6)
+    
+    if (Tmin < 13.4):
+        m_L = 0.
+    
+    mu_L    = 0.01 + 0.9725*np.exp(- (Tm - 4.85)/2.7035)
+    
+    C_L     = 1.5*(L/KL)
+    
+    m_P		=	0.384*rate_mx(Tm, 14931.,-472379.,148.)
+    
+    mu_P	=	0.01 + 0.9725*np.exp(- (Tm - 4.85)/2.7035)
+    
+    ### paramite modelo epi
+    
+    
+    b_theta_pV	=	bite_rate*theta_T(Tm)*MIObv
+		
+    if ( Tm < NO_INFECCION):
+        b_theta_pV = 0.
+        
+    mu_V    = muerte_V(Tm)*MU_MOSQUITA_ADULTA
+    
+    if ( Tmin < MATAR_VECTORES):
+        mu_V = 2*mu_V
+        
+    m_M     = MADURACION_MOSQUITO
+    
+    mu_M    = MU_MOSQUITO_JOVEN
+		
+    b_theta_pH		=	bite_rate*theta_T(Tm)*MIObh 
+    if ( Tmin < NO_INFECCION ): 
+        b_theta_pH = 0.
+        
+    sigma_H			=	1./Remove_expose 
+    gama			=	1./Remove_infect
+    
+    #deltaI = RATE_CASOS_IMP*casosImp[week]
+    deltaI = RATE_CASOS_IMP*CasosImp[tt]
+    
+    ##modelo para la ODE
+    
+    dv[0]	=	beta_day_theta_0*V - fR*E_D - mu_Dry*E_D
+    
+    dv[1]	=	fR*E_D - m_E_C_G*E_W - mu_Wet*E_W
+        
+    if (Tmin < Temp_ACUATICA):
+        dv[1] = MUERTE_ACUATICA*dv[1]
+    
+    dv[2]	=	m_E_C_G*E_W - m_L*L - ( mu_L + C_L )*L
+        
+    if (Tmin < Temp_ACUATICA):
+        dv[1] = MUERTE_ACUATICA*dv[2]
+        
+    dv[3]	=	m_L*L - m_P*P - mu_P*P
+        
+    if (Tmin < Temp_ACUATICA):
+        dv[1] = MUERTE_ACUATICA*dv[3]
+    
+    dv[4]	=	m_P*P - m_M*M - mu_M*M
+    
+    dv[5]	=	0.5*m_M*M - mu_V*V
+    
+    dv[6]	=	0.5*m_M*M - b_theta_pV*(H_I/poblacion)*V_S - mu_V*V_S
+    
+    dv[7]	=	b_theta_pV*(H_I/poblacion)*V_S - EV - mu_V*V_E
+    
+    dv[8]	=	EV - mu_V*V_I
+    
+    dv[9]	=	- b_theta_pH*(H_S/poblacion)*V_I - sigma_H*H_E
+    
+    dv[10]	=	b_theta_pH*(H_S/poblacion)*V_I - sigma_H*H_E
+    
+    dv[11]	=	sigma_H*H_E - gama*H_I + deltaI
+    
+    dv[12]	=	gama*H_I
+    
+    return dv
+
+
+def fun(k,beta,temporada,suma,ci=None,rain=oran[:,3],tmin=oran[:,0],tmean=oran[:,2],hr=oran[:,4]):
+    
+    i_temporada = (np.datetime64(temporada[0]) - days[0]).astype(int)
+    f_temporada = (np.datetime64(temporada[1]) - days[0]).astype(int) + 1
+    
+    i_suma = (np.datetime64(suma[0]) - days[0]).astype(int)
+    f_suma = (np.datetime64(suma[1]) - days[0]).astype(int) + 1
+
+    TMIN = tmin[i_temporada:f_temporada]
+    Tmean = tmean[i_temporada:f_temporada]
+    Rain = rain[i_temporada:f_temporada]
+    HR = hr[i_temporada:f_temporada]
+
+    DAYS=np.size(Tmean)
+    WEEKS = int(len(Tmean)/7) + 1
+    
+    if ci is None:
+        casosIMP = np.loadtxt('data/serie_ci_2001_2022.txt', skiprows=1)[i_temporada:f_temporada]
+    else: 
+        ingreso_ci = ci[0]
+        cantidad_ci = ci[1]
+        casosIMP = cases(ingreso_ci,cantidad_ci,temporada)
+    
+    ED0  = 22876.
+    EW0  = 102406
+    L0   = 24962.
+    P0   = 2003.
+    M0   = 28836.
+    V0   = 0.
+    V_S0 = 0.
+    V_E0 = 0.
+    V_I0 = 0.
+    H_S0 = ALPHA*poblacion
+    H_E0 = 0.
+    H_I0 = 0.
+    H_R0 = ALPHA*poblacion - H_S0
+    H_t  = 24.
+
+    v = np.zeros(13)
+    v[0]  = ED0
+    v[1]  = EW0
+    v[2]  = L0
+    v[3]  = P0
+    v[4]  = M0
+    v[5]  = V0
+    v[6]  = V_S0
+    v[7]  = V_E0
+    v[8]  = V_I0
+    v[9]  = H_S0
+    v[10] = H_E0
+    v[11] = H_I0
+    v[12] = H_R0
+
+    dias = DAYS-1
+    paso_d = np.zeros(dias)
+    paso_w = np.zeros(WEEKS)
+    solucion = np.empty_like(v)
+
+    V_H = np.empty_like(paso_d)
+    V_H_w = np.zeros_like(paso_w)
+    egg_d = np.empty_like(paso_d)
+    egg_w = np.empty_like(paso_d)
+    larv  = np.empty_like(paso_d)
+    pupa  = np.empty_like(paso_d)
+    mosco = np.empty_like(paso_d)
+    aedes = np.empty_like(paso_d)
+    vec_s = np.empty_like(paso_d)
+    vec_i = np.empty_like(paso_d)
+    host_i = np.empty_like(paso_d)
+    parametro   = np.zeros_like(paso_d)
+    parametro_w = np.zeros_like(paso_w)
+
+    egg_d[0] = v[0]/poblacion#egg_wet(Rain[0])#v[0]/poblacion #mu_Dry*
+    egg_w[0] = v[1]/poblacion
+    larv[0]  = v[2]/poblacion
+    pupa[0]  = v[3]/poblacion
+    mosco[0] = v[4]/poblacion
+    aedes[0] = v[4]/poblacion
+    vec_s[0] = v[4]/poblacion
+    vec_i[0] = v[8]/poblacion
+    host_i[0]= 0.
+    parametro[0] = 0.
+
+    G_T = np.empty_like(paso_d)
+    G_TV = np.empty_like(paso_d)
+    F_T = np.empty_like(paso_d)
+    G_T[0] = bite_rate*theta_T(Tmean[0]) * MIObv * v[8] * v[9]/poblacion
+    G_TV[0] = bite_rate*theta_T(Tmean[0]) * MIObv * v[6] * v[11]/poblacion
+    F_T[0] = bite_rate*theta_T(Tmean[0]) * MIObh * v[8] * v[6]/poblacion
+
+    G_T_week = np.zeros(WEEKS)
+    G_TV_week = np.zeros(WEEKS)
+    contar = 0 
+    week = 0
+
+    for t in range(1,dias):
+        paso_d[int(t)] = t
+        h = 1.
+
+        G_T[t]	=  bite_rate*theta_T(Tmean[t])* MIObv * v[8] * v[9]/poblacion
+        G_TV[t]	=  bite_rate*theta_T(Tmean[t])* MIObv * v[6] * v[11]/poblacion
+        F_T[t] = bite_rate*theta_T(Tmean[0]) * MIObh * v[8] * v[6]/poblacion
+
+        sigma_V     =	1./(1. + (0.1216*Tmean[int(t)]*Tmean[int(t)] - 8.66*Tmean[int(t)] + 154.79) )
+
+        EV = sigma_V*v[7]
+        H_t     = hume(H_t,Rain[int(t)], Tmean[int(t)], HR[int(t)])
+        
+        solucion     =  runge(modelo,t,h,v,args=(EV,H_t,Tmean,TMIN,Rain,casosIMP,beta,k))
+        v = solucion
+
+        for q in range(13):
+            if (v[q]<0.):
+                v[q] = 0.
+
+        V_H[t] = v[0]/poblacion
+
+        egg_d[t] = v[0]/poblacion
+        egg_w[t] = v[1]/poblacion
+        larv[t] = v[2]/poblacion
+        pupa[t] = v[3]/poblacion
+        mosco[t] = v[4]/poblacion
+        aedes[t] = v[5]/poblacion
+        vec_s[t] = v[6]/poblacion
+        vec_i[t] = v[8]/poblacion
+        
+        gamma = 1./Remove_infect
+
+        parametro[int(t)] =  np.sqrt( (sigma_V/gamma) * ((bite_rate*bite_rate*theta_T(Tmean[t])*theta_T(Tmean[t])*MIObh*MIObv)/(muerte_V(Tmean[t])*MU_MOSQUITA_ADULTA*(sigma_V + muerte_V(Tmean[t])*MU_MOSQUITA_ADULTA))) * vec_s[t] * ALPHA )
+
+        G_T_week[week] = G_T_week[week] + G_T[t]
+        #G_TV_week[week] = G_TV_week[week] + G_TV_week[t]
+
+        contar = contar + 1
+        if (contar > 6):
+            G_T_week[week] = G_T_week[week]
+            #G_TV_week[week] = G_TV_week[week]
+            week = week + 1
+            contar = 0
+        
+        host_i[t] = v[11]
+        
+    salida = np.sum(G_T[i_suma-1:f_suma])
+    
+    return G_T, salida
+
