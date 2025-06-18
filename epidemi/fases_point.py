@@ -61,8 +61,8 @@ itera = 10
 temporada = ['2001-01-01', '2008-12-31']
 suma_casos = ['2007-07-01', '2008-06-30']
 
-s = time.time()
+# s = time.time()
 test = matrix_epic_size_point(point, itera, temporada, suma_casos)
-np.savetxt('test.txt', test, fmt='%6f', header=f'point:{point}', comments='')
-e = time.time()
-print(f"Tiempo de ejecución: {e- s:.2f} segundos")
+# np.savetxt('test.txt', test, fmt='%6f', header=f'point:{point}', comments='')
+# e = time.time()
+# print(f"Tiempo de ejecución: {e- s:.2f} segundos")
