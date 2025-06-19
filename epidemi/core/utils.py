@@ -2,7 +2,11 @@ import numpy as np
 import scipy.special as sc
 import random
 import math
-import matplotlib.pyplot as plt
+import importlib.resources as pkg_resources
+
+def load_data_file(filename):
+    with pkg_resources.files('epidemi.data').joinpath(filename).open('r') as f:
+        return np.loadtxt(f, skiprows=1)
 
 MIObh         = 0.75
 MIObv         = 0.75
@@ -32,8 +36,6 @@ H_t  = 24.
 hogares = 17633
 poblacion = 75697
 
-days = np.arange('2001-01-01','2023-01-01', dtype='datetime64[D]')
-oran = np.loadtxt('data/ORAN_2001_2022.txt', skiprows=1)
 # ###FUNCIONES A UTILIZAR ####FUNCIONES A UTILIZAR ####FUNCIONES A UTILIZAR
 
 def moving_average(x, w):
@@ -347,6 +349,8 @@ def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
     
     return dv
 
+days = np.arange('2001-01-01','2023-01-01', dtype='datetime64[D]')
+oran = load_data_file('ORAN_2001_2022.txt')
 
 def fun(k,beta,temporada,suma,ci=None,rain=oran[:,3],tmin=oran[:,0],tmean=oran[:,2],hr=oran[:,4]):
     
@@ -365,7 +369,7 @@ def fun(k,beta,temporada,suma,ci=None,rain=oran[:,3],tmin=oran[:,0],tmean=oran[:
     WEEKS = int(len(Tmean)/7) + 1
     
     if ci is None:
-        casosIMP = np.loadtxt('data/serie_ci_2001_2022.txt', skiprows=1)[i_temporada:f_temporada]
+        casosIMP = load_data_file('serie_ci_2001_2022.txt')[i_temporada:f_temporada]
     else: 
         ingreso_ci = ci[0]
         cantidad_ci = ci[1]
