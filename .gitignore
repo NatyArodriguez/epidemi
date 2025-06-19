@@ -3,7 +3,11 @@ bin/
 lib/
 share/
 include/
+notebooks/
 pyvenv.cfg
+
+# Build artifacts
+*.egg-info/
 
 # Ignorar archivos temporales
 *.pyc
