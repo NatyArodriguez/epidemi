@@ -32,7 +32,6 @@ def matrix_epic_size_point(sigmas, n_iterations, season, suma, data_rain=rain, d
     ci_sim_str = ci_sim.astype(str)
     mask_no_29feb = np.array([not f.endswith('02-29') for f in ci_sim_str])
 
-    # Aplicamos la máscara
     ci_sim = ci_sim[mask_no_29feb]
     
     n_sim = len(ci_sim)
