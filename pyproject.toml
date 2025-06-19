@@ -1,0 +1,25 @@
+[project]
+name = "epidemi"
+version = "0.1.0"
+description = "Simulación y análisis epidemiológico"
+authors = [
+    { name="Natalia Rodriguez", email="natalia.agustina.rodriguez@mi.unc.edu.ar" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["epidemi"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"epidemi.data" = ["*.txt"]
