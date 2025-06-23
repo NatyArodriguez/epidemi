@@ -4,10 +4,12 @@ lib/
 share/
 include/
 notebooks/
+data_points/
 pyvenv.cfg
 
 # Build artifacts
 *.egg-info/
+etc/
 
 # Ignorar archivos temporales
 *.pyc
