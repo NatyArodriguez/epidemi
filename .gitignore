@@ -10,6 +10,7 @@ pyvenv.cfg
 # Build artifacts
 *.egg-info/
 etc/
+.DS_Store
 
 # Ignorar archivos temporales
 *.pyc
