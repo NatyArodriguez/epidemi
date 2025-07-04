@@ -5,6 +5,7 @@ share/
 include/
 notebooks/
 data_points/
+data_temp/
 pyvenv.cfg
 
 # Build artifacts
