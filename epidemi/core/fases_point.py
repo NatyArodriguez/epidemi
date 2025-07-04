@@ -29,7 +29,11 @@ def matrix_epic_size_point(sigmas, n_iterations, season, suma, data_rain=rain,
         n_iterations: int
             Number of iteration that you wish.
     """
-    ci_sim = np.arange(suma[0],suma[1],dtype='datetime64[D]')
+    
+    date_i = np.datetime64(suma[0])
+    date_f = np.datetime64(suma[1])
+    ci_sim = np.arange(date_i, date_f + np.timedelta64(1, 'D'), dtype='datetime64[D]')
+    
     ci_sim_str = ci_sim.astype(str)
     mask_no_29feb = np.array([not f.endswith('02-29') for f in ci_sim_str])
 
