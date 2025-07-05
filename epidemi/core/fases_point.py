@@ -1,6 +1,6 @@
 import numpy as np
-import epidemi.core.utils as u
-from .utils import load_data_file
+import epidemi.core.rain_model as r
+from .utils import load_data_file, fun
 
 rain = load_data_file('hystoric_rain.txt')
 alpha = load_data_file('hystoric_alphas.txt')
@@ -52,10 +52,10 @@ def matrix_epic_size_point(sigmas, n_iterations, season, suma, data_rain=rain,
     for i in range(n_sim):
         ci = [ci_sim[i], 1]
         for j in range(n_iterations):
-            rain_serie = u.anual_rain(rain_syntetic, alpha_syntetic,
+            rain_serie = r.anual_rain(rain_syntetic, alpha_syntetic,
                                       days_syntetic)
             rr = np.tile(rain_serie, 17)
-            aux = u.fun(350, 1.69, season, suma, ci, rr,
+            aux = fun(350, 1.69, season, suma, ci, rr,
                         tmin, tmean, hr)
             matriz[i,j] = aux[1]
     
