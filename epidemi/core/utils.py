@@ -1,10 +1,15 @@
 import numpy as np
 import scipy.special as sc
+import pandas as pd
 import importlib.resources as pkg_resources
 
 def load_data_file(filename):
     with pkg_resources.files('epidemi.data').joinpath(filename).open('r') as f:
         return np.loadtxt(f, skiprows=1)
+
+def load_data_file_pandas(filename):
+    with pkg_resources.files('epidemi.data').joinpath(filename).open('r') as f:
+        return pd.read_table(f, sep='\t')
 
 MIObh         = 0.75
 MIObv         = 0.75
