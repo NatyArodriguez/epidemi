@@ -1,7 +1,9 @@
+# differents models for syntetic temperature
+
 import numpy as np
 import epidemi.core.utils as u
-from .temp_model import anual_temp
-from .utils import load_data_file
+from epidemi.core.temp_model import anual_temp
+from epidemi.core.utils import load_data_file
 
 
 # decil | days | tmin | tmax | tmean | std tmin | std tmax | std tmean 
@@ -48,6 +50,62 @@ def temp_matrix_epic_size(delta, n_iterations, season, suma, data_T=temp):
     
     tmin_syntetic = data_T[:,2] + delta
     tmean_syntetic = data_T[:,4] + delta
+    
+    days_decil = data_T[:,1].astype(int)
+
+    for i in range(n_sim):
+        ci = [ci_sim[i], 1]
+        for j in range(n_iterations):
+            tmin_serie = anual_temp(tmin_syntetic, std_tmin, days_decil)
+            tmean_serie = anual_temp(tmean_syntetic, std_tmean, days_decil)
+            
+            tmin = np.tile(tmin_serie, 17)
+            tmean = np.tile(tmean_serie, 17)
+            aux = u.fun(350, 1.69, season, suma, ci, rain, tmin,
+                        tmean, hr)
+            matriz[i,j] = aux[1]
+    return matriz
+
+
+def temp_warm_cold(deltas, n_iterations, season, suma, data_T=temp):
+    """Function to increas the center of the deciles. Deltas it must\
+        be a list with the values for the increments for warm months\
+        (Oct - Mar) and for cold months (Apr - Sep), respectively.
+
+    Args:
+        deltas (list): [delta warm months, delta cold months]
+        n_iterations (int): number of simulations.
+        season (tuple): start and end dates of the season that you\
+            want simulated.
+        suma (tuple): start and end dates to add up the total cases.
+        data_T (_type_, optional): _description_. Defaults to temp.
+
+    Returns:
+        _type_: _description_
+    """
+    
+    deciles = np.ones(36)
+    deciles[:9] *= deltas[0]
+    deciles[9:27] *= deltas[1]
+    deciles[27:] *= deltas[0]
+    
+    date_i = np.datetime64(suma[0])
+    date_f = np.datetime64(suma[1])
+    ci_sim = np.arange(date_i, date_f + np.timedelta64(1, 'D'), dtype='datetime64[D]')
+    ci_sim_str = ci_sim.astype(str)
+    mask_no_29feb = np.array([not f.endswith('02-29') for f in ci_sim_str])
+
+    ci_sim = ci_sim[mask_no_29feb]
+    
+    n_sim = len(ci_sim)
+    
+    matriz = np.zeros([n_sim, n_iterations])
+    
+    std_tmin = data_T[:,5]
+    std_tmean = data_T[:,7]
+    
+    tmin_syntetic = data_T[:,2] + deciles
+    tmean_syntetic = data_T[:,4] + deciles
     
     days_decil = data_T[:,1].astype(int)
 
