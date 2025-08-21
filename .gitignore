@@ -6,6 +6,7 @@ include/
 notebooks/
 data_points/
 data_temp/
+data_temp_wc/
 data_rain_temp/
 pyvenv.cfg
 
