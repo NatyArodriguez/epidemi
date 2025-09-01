@@ -1,8 +1,8 @@
-# differents models for syntetic temperature
+# Final epidemic size matrices working with synthetic temperature only.
 
 import numpy as np
 import epidemi.core.utils as u
-from epidemi.core.temp_model import anual_temp
+from epidemi.core.temp_model import anual_temp, TemperatureGenerator
 from epidemi.core.utils import load_data_file
 
 
@@ -23,8 +23,8 @@ hr = oran_medio[:,6]
 
 def temp_matrix_epic_size(delta, n_iterations, season, suma, data_T=temp):
     """This function generates a matrix where each column represents the daily\
-        total epidemic size for a year, simulated under different rainfall\
-        scenaries specific by the tuple sigmas.
+        total epidemic size for a year, simulated under different temperature\
+        scenaries specific by delta values.
 
     Parameters:
         sigmas: tuple of float
@@ -122,7 +122,45 @@ def temp_warm_cold(deltas, n_iterations, season, suma, data_T=temp):
             matriz[i,j] = aux[1]
     return matriz
 
+def temp_matrix_interpolation(delta, n_iterations, season, suma, days, data_T=temp):
+    date_i = np.datetime64(suma[0])
+    date_f = np.datetime64(suma[1])
+    ci_sim = np.arange(date_i, date_f + np.timedelta64(1, 'D'), dtype='datetime64[D]')
+    ci_sim_str = ci_sim.astype(str)
+    mask_no_29feb = np.array([not f.endswith('02-29') for f in ci_sim_str])
+
+    ci_sim = ci_sim[mask_no_29feb]
+    
+    n_sim = len(ci_sim)
+    
+    matriz = np.zeros([n_sim, n_iterations])
+    
+    std_tmin = data_T[:,5]*0.5
+    std_tmean = data_T[:,7]*0.5
+    
+    tmin_syntetic = data_T[:,2] + delta
+    tmean_syntetic = data_T[:,4] + delta
+    
+    temp_gen = TemperatureGenerator()
+
+    for i in range(n_sim):
+        ci = [ci_sim[i], 1]
+        for j in range(n_iterations):
+            p_tmin = temp_gen.generate_temperature_points(days, tmin_syntetic, std_tmin)
+            p_tmean = temp_gen.generate_temperature_points(days, tmean_syntetic, std_tmean)
+            
+            tmin_serie = temp_gen.generate_daily_temperature(p_tmin)
+            tmean_serie = temp_gen.generate_daily_temperature(p_tmean)
+            
+            tmin = np.tile(tmin_serie, 17)
+            tmean = np.tile(tmean_serie, 17)
+            aux = u.fun(350, 1.69, season, suma, ci, rain, tmin,
+                        tmean, hr)
+            matriz[i,j] = aux[1]
+    return matriz
+
 def temp_matrix_epic_size2(sigmas, n_iterations, season, suma, data_T=temp):
+    # Esta la hice para trabajar con la media de entre una serie de temperatura maxima y minima
     """This function generates a matrix where each column represents the daily\
         total epidemic size for a year, simulated under different rainfall\
         scenaries specific by the tuple sigmas.
