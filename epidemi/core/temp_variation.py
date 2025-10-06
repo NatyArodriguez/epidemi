@@ -2,7 +2,7 @@
 
 import numpy as np
 import epidemi.core.utils as u
-from epidemi.core.temp_model import anual_temp, TemperatureGenerator
+from epidemi.core.temp_model import anual_temp, TemperatureGenerator, TemperatureGeneratorWithNoise
 from epidemi.core.utils import load_data_file
 
 
@@ -76,8 +76,11 @@ def temp_matrix_epic_size(delta, n_iterations, season, suma, data_T=temp):
             matriz[i,j] = aux[1]
     return matriz
 
+normal_data = load_data_file('hystoric_temp.txt')
+gamma_data = load_data_file('gamma_decil.txt')
 
-def temp_warm_cold(deltas, n_iterations, season, suma, data_T=temp):
+def temp_warm_cold(deltas, n_iterations, season, suma, days,
+                   data_normal=normal_data, data_gamma=gamma_data):
     """It generates a matrix where the number of columns is the number of\
         iterations desired and the number of rows is equal to the days of\
         a non-leap year. Each element represents the number of total cases\
@@ -119,20 +122,21 @@ def temp_warm_cold(deltas, n_iterations, season, suma, data_T=temp):
     
     matriz = np.zeros([n_sim, n_iterations])
     
-    std_tmin = data_T[:,5]
-    std_tmean = data_T[:,7]
+    std_max = data_normal[:,6]
+    std_min = data_normal[:,5]
+    std_params = data_normal[:,7]
+    mean_params = data_normal[:,4] + deciles
+    shape_params = data_gamma[:,2]
+    scale_params = data_gamma[:,4]
     
-    tmin_syntetic = data_T[:,2] + deciles
-    tmean_syntetic = data_T[:,4] + deciles
-    
-    days_decil = data_T[:,1].astype(int)
+    temp_gen = TemperatureGeneratorWithNoise()
 
     for i in range(n_sim):
         ci = [ci_sim[i], 1]
         for j in range(n_iterations):
-            tmin_serie = anual_temp(tmin_syntetic, std_tmin, days_decil)
-            tmean_serie = anual_temp(tmean_syntetic, std_tmean, days_decil)
-            
+            tmin_serie, _, tmean_serie = temp_gen.generate_temperature_points(days,
+                            mean_params, std_params, std_max, std_min, shape_params,
+                            scale_params)
             tmin = np.tile(tmin_serie, 17)
             tmean = np.tile(tmean_serie, 17)
             aux = u.fun(350, 1.69, season, suma, ci, rain, tmin,
