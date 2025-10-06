@@ -8,6 +8,9 @@ data_points/
 data_temp/
 data_temp_wc/
 data_rain_temp/
+data_temp_gamma/
+data_temp_gamma_interpolation2/
+data_temp_gamma_interpolation4
 pyvenv.cfg
 
 # Build artifacts
