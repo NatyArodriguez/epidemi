@@ -657,4 +657,4 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
         
     salida = G_T[i_suma:f_suma]
     
-    return G_T, salida
+    return G_T, salida, aedes[i_suma:f_suma]
