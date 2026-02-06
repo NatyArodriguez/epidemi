@@ -99,7 +99,7 @@ def hume(H_t,rain,Tm,Hum):
 def theta_T(Tm):
     salida = 0.
     
-    if ( (11.7 < Tm) and (Tm < 32.7)) :
+    if ( (11.7 < Tm) and (Tm < 37.2)) : #32.7
         salida = 0.1137*(-5.4 + 1.8*Tm - 0.2124*Tm*Tm + 0.01015*Tm*Tm*Tm - 0.0001515*Tm*Tm*Tm*Tm);
     
     return salida
@@ -361,8 +361,8 @@ def fun(k,beta,temporada,suma,ci=None,rain=oran[:,3],tmin=oran[:,0],
     i_temporada = (np.datetime64(temporada[0]) - days[0]).astype(int)
     f_temporada = (np.datetime64(temporada[1]) - days[0]).astype(int) + 1
     
-    i_suma = (np.datetime64(suma[0]) - days[0]).astype(int)
-    f_suma = (np.datetime64(suma[1]) - days[0]).astype(int) + 1
+    i_suma = (np.datetime64(suma[0]) - np.datetime64(temporada[0])).astype(int)
+    f_suma = (np.datetime64(suma[1]) - np.datetime64(temporada[0])).astype(int) + 1
 
     TMIN = tmin[i_temporada:f_temporada]
     Tmean = tmean[i_temporada:f_temporada]
@@ -518,8 +518,9 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
     i_temporada = fecha_a_indice[np.datetime64(temporada[0])]
     f_temporada = fecha_a_indice[np.datetime64(temporada[1])] + 1
     
-    i_suma = fecha_a_indice[np.datetime64(suma[0])]
-    f_suma = fecha_a_indice[np.datetime64(suma[1])] + 1
+    i_suma = (np.datetime64(suma[0]) - np.datetime64(temporada[0])).astype(int)
+    f_suma = (np.datetime64(suma[1]) - np.datetime64(temporada[0])).astype(int) + 1
+
 
     TMIN = tmin[i_temporada:f_temporada]
     Tmean = tmean[i_temporada:f_temporada]
@@ -657,4 +658,4 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
         
     salida = G_T[i_suma:f_suma]
     
-    return G_T, salida, aedes[i_suma:f_suma]
+    return G_T, salida, aedes[i_suma:f_suma] #mosco o aedes?
