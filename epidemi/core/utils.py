@@ -30,7 +30,7 @@ Temp_ACUATICA       = 10.
 RATE_CASOS_IMP      = 1. #entero
 # paramites aedes en days 
 MU_MOSQUITO_JOVEN   = 1./2. 
-MADURACION_MOSQUITO = 1./2.          
+MADURACION_MOSQUITO = 1./5.          
 MU_MOSQUITA_ADULTA  = 1./10. #// vida^{-1} del vector en optimas condiciones (22 grados) 0.091; //
 Rthres              = 12.5 
 Hmax                = 24.
@@ -518,8 +518,8 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
     i_temporada = fecha_a_indice[np.datetime64(temporada[0])]
     f_temporada = fecha_a_indice[np.datetime64(temporada[1])] + 1
     
-    i_suma = (np.datetime64(suma[0]) - np.datetime64(temporada[0])).astype(int)
-    f_suma = (np.datetime64(suma[1]) - np.datetime64(temporada[0])).astype(int) + 1
+    i_suma = fecha_a_indice[np.datetime64(suma[0])]
+    f_suma = fecha_a_indice[np.datetime64(suma[1])] + 1
 
 
     TMIN = tmin[i_temporada:f_temporada]
@@ -659,3 +659,232 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
     salida = G_T[i_suma:f_suma]
     
     return G_T, salida, aedes[i_suma:f_suma] #mosco o aedes?
+
+def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
+             rain=None, hr=None,
+             tmean=oran[:,2]):
+    
+    i_temporada = (np.datetime64(temporada[0]) - np.datetime64(i_date)).astype(int)
+    f_temporada = (np.datetime64(temporada[1]) - np.datetime64(i_date)).astype(int) + 1
+    
+    i_ci = (np.datetime64(temporada[0]) - np.datetime64('2001-01-01')).astype(int)
+    f_ci = (np.datetime64(temporada[1]) - np.datetime64('2001-01-01')).astype(int) + 1
+    #i_suma = (np.datetime64(suma[0]) - np.datetime64(temporada[0])).astype(int)
+    #f_suma = (np.datetime64(suma[1]) - np.datetime64(temporada[0])).astype(int) + 1
+
+    
+    Tmean = tmean[i_temporada:f_temporada]
+    
+    if hr is None:
+        hr = oran[:,4]
+        HR = hr[i_ci:f_ci]
+    else: 
+        HR = hr[i_temporada:f_temporada]
+    
+    if rain is None:
+        rain = oran[:,3]
+        Rain = rain[i_ci:f_ci]
+    else:
+        Rain = rain[i_temporada:f_temporada]
+    
+    if tmin is None:
+        tmin=oran[:,0]
+        TMIN = tmin[i_ci:f_ci]
+    else:
+        TMIN = tmin[i_temporada:f_temporada]
+
+    DAYS=np.size(Tmean)
+    WEEKS = int(len(Tmean)/7) + 1
+    
+    if ci is None:
+        casosIMP = np.loadtxt('serie_ci_2001_2022.txt', skiprows=1)
+        i_ci = (np.datetime64(temporada[0]) - np.datetime64('2001-01-01')).astype(int)
+        f_ci = (np.datetime64(temporada[1]) - np.datetime64('2001-01-01')).astype(int) + 1
+        casosIMP = casosIMP[i_ci:f_ci]
+    else: 
+        ingreso_ci = ci[0]
+        cantidad_ci = ci[1]
+        casosIMP = cases(ingreso_ci,cantidad_ci,temporada)
+    
+    if initial_c is None:
+        ED0  = 22876.
+        EW0  = 102406
+        L0   = 24962.
+        P0   = 2003.
+        M0   = 28836.
+        V0   = 0.
+        V_S0 = 0.
+        V_E0 = 0.
+        V_I0 = 0.
+        H_S0 = ALPHA*poblacion
+        H_E0 = 0.
+        H_I0 = 0.
+        H_R0 = ALPHA*poblacion - H_S0
+    else:
+        ED0  = initial_c[0]
+        EW0  = initial_c[1]
+        L0   = initial_c[2]
+        P0   = initial_c[3]
+        M0   = initial_c[4]
+        V0   = initial_c[5]
+        V_S0 = initial_c[6]
+        V_E0 = initial_c[7]
+        V_I0 = initial_c[8]
+        H_S0 = initial_c[9]
+        H_E0 = initial_c[10]
+        H_I0 = initial_c[11]
+        H_R0 = initial_c[12]
+        
+    
+    H_t  = 24.
+
+    v = np.zeros(13)
+    v[0]  = ED0
+    v[1]  = EW0
+    v[2]  = L0
+    v[3]  = P0
+    v[4]  = M0
+    v[5]  = V0
+    v[6]  = V_S0
+    v[7]  = V_E0
+    v[8]  = V_I0
+    v[9]  = H_S0
+    v[10] = H_E0
+    v[11] = H_I0
+    v[12] = H_R0
+
+    dias = DAYS-1
+    V_time = np.zeros((dias,13))
+    V_time[0,:] = v
+    
+    paso_d = np.zeros(dias)
+    paso_w = np.zeros(WEEKS)
+    solucion = np.empty_like(v)
+
+    V_H = np.empty_like(paso_d)
+    V_H_w = np.zeros_like(paso_w)
+    egg_d = np.empty_like(paso_d)
+    egg_w = np.empty_like(paso_d)
+    larv  = np.empty_like(paso_d)
+    pupa  = np.empty_like(paso_d)
+    mosco = np.empty_like(paso_d)
+    aedes = np.empty_like(paso_d)
+    vec_s = np.empty_like(paso_d)
+    vec_e = np.empty_like(paso_d)
+    vec_i = np.empty_like(paso_d)
+    h_s = np.empty_like(paso_d)
+    host_i = np.empty_like(paso_d)
+    array_ev = np.empty_like(paso_d)
+    parametro   = np.zeros_like(paso_d)
+    parametro_w = np.zeros_like(paso_w)
+
+    egg_d[0] = v[0]/poblacion#egg_wet(Rain[0])#v[0]/poblacion #mu_Dry*
+    egg_w[0] = v[1]/poblacion
+    larv[0]  = v[2]/poblacion
+    pupa[0]  = v[3]/poblacion
+    mosco[0] = v[4]/poblacion
+    aedes[0] = v[4]/poblacion
+    vec_s[0] = v[4]/poblacion
+    vec_e[0] = 0/poblacion
+    vec_i[0] = v[8]/poblacion
+    h_s[0] = ALPHA*poblacion # lo agregue yo
+    array_ev[0] = 0.
+    host_i[0]= 0.
+    parametro[0] = 0.
+
+    G_T = np.empty_like(paso_d)
+    G_TV = np.empty_like(paso_d)
+    F_T = np.empty_like(paso_d)
+    G_T[0] = bite_rate*theta_T(Tmean[0]) * MIObv * v[8] * v[9]/poblacion
+    G_TV[0] = bite_rate*theta_T(Tmean[0]) * MIObv * v[6] * v[11]/poblacion
+    F_T[0] = bite_rate*theta_T(Tmean[0]) * MIObh * v[8] * v[6]/poblacion
+
+    G_T_week = np.zeros(WEEKS)
+    G_TV_week = np.zeros(WEEKS)
+    
+    
+    inicio = np.datetime64(temporada[0])
+    fin = np.datetime64(temporada[1])
+    fechas = np.arange(inicio, fin + 1, dtype='datetime64[D]')
+
+    años = fechas.astype('datetime64[Y]')
+    meses = fechas.astype('datetime64[M]')
+
+    # Obtener mes y día numéricamente
+    mes_num = (meses - años).astype(int) + 1
+    dia_num = (fechas - meses).astype(int) + 1
+
+    julio = np.where((mes_num == 6) & (dia_num == 30))[0]
+    julio = julio[0:-1]
+
+    #julio = [180,546,911,1276,1641,2007,2372,2737,3102,3468] 
+    valor = 0
+    contar = 0 
+    week = 0
+    
+    for t in range(1,dias):
+        paso_d[int(t)] = t
+        h = 1.
+        Kmax = k[valor]
+        G_T[t]	=  bite_rate*theta_T(Tmean[t])* MIObv * v[8] * v[9]/poblacion
+        G_TV[t]	=  bite_rate*theta_T(Tmean[t])* MIObv * v[6] * v[11]/poblacion
+        F_T[t] = bite_rate*theta_T(Tmean[0]) * MIObh * v[8] * v[6]/poblacion#bite_rate*theta_T(Tmean[0]) * MIObh * v[8] * v[6]/poblacion
+
+        sigma_V     =	1./(1. + (0.1216*Tmean[int(t)]*Tmean[int(t)] - 8.66*Tmean[int(t)] + 154.79) )
+
+        EV = sigma_V*v[7]
+        array_ev[t] = EV
+        H_t     = hume(H_t,Rain[int(t)], Tmean[int(t)], HR[int(t)])
+        
+        solucion     =  runge(modelo,t,h,v,args=(EV,H_t,Tmean,TMIN,Rain,casosIMP,beta_day,Kmax))
+        v = solucion
+
+        for q in range(13):
+            if (v[q]<0.):
+                v[q] = 0.
+        
+        V_time[t,:] = v
+        
+        labels = [
+            "ED","EW","L","P","M","V",
+            "V_S","V_E","V_I",
+            "H_S","H_E","H_I","H_R"
+        ]
+        tabla = pd.DataFrame(V_time, columns=labels)
+
+        V_H[t] = v[0]/poblacion
+
+        egg_d[t] = v[0]/poblacion
+        egg_w[t] = v[1]/poblacion
+        larv[t] = v[2]/poblacion
+        pupa[t] = v[3]/poblacion
+        mosco[t] = v[4]/poblacion
+        aedes[t] = v[5]/poblacion
+        vec_s[t] = v[6]/poblacion
+        vec_e[t] = v[7]/poblacion
+        vec_i[t] = v[8]/poblacion
+        h_s[t] = v[9]
+        
+        gamma = 1./Remove_infect
+
+        parametro[int(t)] =  np.sqrt( (sigma_V/gamma) * ((bite_rate*bite_rate*theta_T(Tmean[t])*theta_T(Tmean[t])*MIObh*MIObv)/(muerte_V(Tmean[t])*MU_MOSQUITA_ADULTA*(sigma_V + muerte_V(Tmean[t])*MU_MOSQUITA_ADULTA))) * vec_s[t] * ALPHA )
+
+        G_T_week[week] = G_T_week[week] + G_T[t]
+        #G_TV_week[week] = G_TV_week[week] + G_TV_week[t]
+
+        contar = contar + 1
+        if (contar > 6):
+            G_T_week[week] = G_T_week[week]
+            #G_TV_week[week] = G_TV_week[week]
+            week = week + 1
+            contar = 0
+        
+        host_i[t] = v[11]
+        
+        if t in julio:
+            valor = valor + 1
+        Kmax = k[valor]
+        
+    #salida = np.sum(G_T[i_suma-1:f_suma])
+    
+    return G_T,aedes,tabla
