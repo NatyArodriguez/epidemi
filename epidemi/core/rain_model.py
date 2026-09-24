@@ -4,6 +4,24 @@ import numpy as np
 import math
 import random
 
+def contador_lluvia(tupla):
+    long = 0
+    aux = []
+    sumar = 1
+    no_sumar = 0
+    days = 0
+    for i in tupla:
+        if i > 0:
+            aux.append(i)
+            long = long + sumar*i
+            days = days + 1
+        else:
+            long = long + no_sumar*i
+    aux = np.array(aux)
+    mean = aux.mean()
+    var = aux.var()
+    return [long, days, mean, var]
+
 def FT(lengths, alpha):
     rhos = np.random.rand(len(lengths))
     result = np.zeros_like(lengths)
