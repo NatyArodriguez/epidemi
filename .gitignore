@@ -14,6 +14,7 @@ data_temp_gamma_interpolation4/
 data_temp_noisy/
 data_wc_noisy/
 pyvenv.cfg
+CLAUDE.md
 
 # Build artifacts
 *.egg-info/
