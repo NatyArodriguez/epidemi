@@ -399,13 +399,15 @@ def climatology(table):
 
     Returns:
         pd.DataFrame: Indexed by Period, columns TotalRain | RainyDays |\
-            Std_TR | Std_RD | Alpha | Std_Alpha | Median_Alpha | N_Alpha.
+            Std_TR | Std_RD | Median_TR | Alpha | Std_Alpha | Median_Alpha |\
+            N_Alpha.
     """
     rain_stats = table.groupby('Period').agg(
         TotalRain=('TotalRain', 'mean'),
         RainyDays=('RainyDays', 'mean'),
         Std_TR=('TotalRain', 'std'),
         Std_RD=('RainyDays', 'std'),
+        Median_TR=('TotalRain', 'median'),
     )
 
     alpha_stats = table.groupby('Period').agg(
