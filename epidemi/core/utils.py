@@ -323,14 +323,14 @@ def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
         dv[1] = MUERTE_ACUATICA*dv[1]
     
     dv[2]	=	m_E_C_G*E_W - m_L*L - ( mu_L + C_L )*L
-        
+
     if (Tmin < Temp_ACUATICA):
-        dv[1] = MUERTE_ACUATICA*dv[2]
-        
+        dv[2] = MUERTE_ACUATICA*dv[2]
+
     dv[3]	=	m_L*L - m_P*P - mu_P*P
-        
+
     if (Tmin < Temp_ACUATICA):
-        dv[1] = MUERTE_ACUATICA*dv[3]
+        dv[3] = MUERTE_ACUATICA*dv[3]
     
     dv[4]	=	m_P*P - m_M*M - mu_M*M
     
