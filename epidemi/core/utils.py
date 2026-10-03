@@ -662,7 +662,22 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
 
 def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
              rain=None, hr=None,
-             tmean=oran[:,2]):
+             tmean=oran[:,2], initial_H=None, devolver_H=False):
+    """Simula la epidemia en la ventana `temporada` con k cambiando cada 1 de julio.
+
+    Ademas de los argumentos de siempre:
+        initial_H (float, opcional): humedad del criadero H_t al inicio. Si es
+            None arranca en 24 (comportamiento original). Sirve para encadenar
+            temporadas sin reiniciar la humedad del criadero.
+        devolver_H (bool): si es True devuelve tambien la H_t final (la que
+            corresponde a la ultima fila de `tabla`), para pasarla como
+            initial_H a la temporada siguiente.
+
+    Returns:
+        (G_T, aedes, tabla) o, con devolver_H=True, (G_T, aedes, tabla, H_t final).
+        Las salidas tienen un dia menos que la ventana: la fila t de `tabla` es
+        el estado t dias despues de temporada[0] (la fila 0 es initial_c).
+    """
     
     i_temporada = (np.datetime64(temporada[0]) - np.datetime64(i_date)).astype(int)
     f_temporada = (np.datetime64(temporada[1]) - np.datetime64(i_date)).astype(int) + 1
@@ -736,7 +751,7 @@ def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
         H_R0 = initial_c[12]
         
     
-    H_t  = 24.
+    H_t  = 24. if initial_H is None else float(initial_H)
 
     v = np.zeros(13)
     v[0]  = ED0
@@ -887,4 +902,6 @@ def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
         
     #salida = np.sum(G_T[i_suma-1:f_suma])
     
+    if devolver_H:
+        return G_T,aedes,tabla,H_t
     return G_T,aedes,tabla
