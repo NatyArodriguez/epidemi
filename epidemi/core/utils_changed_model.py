@@ -23,10 +23,14 @@ E. Mortalidad de adultas por frio: con `Tmin < MATAR_VECTORES` (12.5 C) las
    adultas mueren a la tasa `MUERTE_FRIO_ADULTAS` (0.5/dia, `EFECT_V` de
    `def_oran.c`) en lugar de `2*mu_V`.
 
+F. Umbral de la infeccion humano -> vector: `Tmin < NO_INFECCION` (antes
+   `Tmean`), igual que la direccion vector -> humano. `Main.c` no tiene umbral
+   en esta direccion; el efecto de la eleccion es despreciable (k <= 2%,
+   `ajuste/umbral_infeccion_vector.ipynb`).
+
 No se cambian (efecto chico en la prueba `ajuste/prueba_correcciones_modelo.ipynb`):
-la formula de `KL`, el umbral de transmision (15 C) ni el umbral termico de
-la infeccion del vector. Las condiciones iniciales son las de siempre, salvo
-`H_R0` (ver A).
+la formula de `KL` ni el valor del umbral de transmision (15 C). Las
+condiciones iniciales son las de siempre, salvo `H_R0` (ver A).
 
 `utils.py` queda sin tocar: los resultados ya calibrados (k, deltas) se
 hicieron con esa version.
@@ -108,7 +112,8 @@ def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
 
     b_theta_pV	=	bite_rate*theta_T(Tm)*MIObv
 
-    if ( Tm < NO_INFECCION):
+    # F: la infeccion humano -> vector usa la Tmin, como la vector -> humano
+    if ( Tmin < NO_INFECCION):
         b_theta_pV = 0.
 
     mu_V    = muerte_V(Tm)*MU_MOSQUITA_ADULTA
