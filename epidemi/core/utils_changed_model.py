@@ -270,7 +270,7 @@ def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
     V_time[0,:] = v
 
     aedes = np.empty(dias)
-    aedes[0] = v[4]/poblacion
+    aedes[0] = v[5]/poblacion
 
     G_T = np.empty(dias)
     G_T[0] = nuevos_casos(Tmean[0], TMIN[0], v)

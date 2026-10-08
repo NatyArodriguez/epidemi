@@ -433,8 +433,8 @@ def fun(k,beta,temporada,suma,ci=None,rain=oran[:,3],tmin=oran[:,0],
     larv[0]  = v[2]/poblacion
     pupa[0]  = v[3]/poblacion
     mosco[0] = v[4]/poblacion
-    aedes[0] = v[4]/poblacion
-    vec_s[0] = v[4]/poblacion
+    aedes[0] = v[5]/poblacion
+    vec_s[0] = v[6]/poblacion
     vec_i[0] = v[8]/poblacion
     host_i[0]= 0.
     parametro[0] = 0.
@@ -591,8 +591,8 @@ def daily_cases(k,beta,temporada,suma,ci=None,rain=oran_medio[:,4],tmin=oran_med
     larv[0]  = v[2]/poblacion
     pupa[0]  = v[3]/poblacion
     mosco[0] = v[4]/poblacion
-    aedes[0] = v[4]/poblacion
-    vec_s[0] = v[4]/poblacion
+    aedes[0] = v[5]/poblacion
+    vec_s[0] = v[6]/poblacion
     vec_i[0] = v[8]/poblacion
     host_i[0]= 0.
     parametro[0] = 0.
@@ -798,8 +798,8 @@ def change_k(k,beta_day,temporada,i_date,initial_c=None,ci=None,tmin=None,
     larv[0]  = v[2]/poblacion
     pupa[0]  = v[3]/poblacion
     mosco[0] = v[4]/poblacion
-    aedes[0] = v[4]/poblacion
-    vec_s[0] = v[4]/poblacion
+    aedes[0] = v[5]/poblacion
+    vec_s[0] = v[6]/poblacion
     vec_e[0] = 0/poblacion
     vec_i[0] = v[8]/poblacion
     h_s[0] = ALPHA*poblacion # lo agregue yo
