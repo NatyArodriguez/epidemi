@@ -460,15 +460,151 @@ def synthetic_rain_year(total_rain, rainy_days, alpha, periods='Q',
     return serie
 
 
+def markov_climatology(rain, periods='Q', threshold=0.):
+    """Climatology for the Markov generator of rainy days.
+
+    For each period, pools all the years of `rain` and computes the\
+        probabilities of a rainy day after a rainy day and after a dry day\
+        (transitions within the period of the same year only), and the\
+        position of the first rainy day of the period in each year.
+
+    Args:
+        rain (pd.Series): Daily rain with a DatetimeIndex (e.g.\
+            load_daily_rain()).
+        periods: 'M', 'Q' or list of lists of months.
+        threshold (float): Minimum rain [mm] for a rainy day (same\
+            convention as aggregate_rain: rain > 0 and rain >= threshold).
+
+    Returns:
+        dict: 'periods', 'transitions' (list of (P(wet|wet), P(wet|dry)) per\
+            period) and 'first_days' (list per period of the 0-based index,\
+            within the period, of the first rainy day of each year with\
+            rain, in chronological order).
+    """
+    periods = _get_periods(periods)
+    month_to_period = _month_to_period(periods)
+    df = pd.DataFrame({'Year': rain.index.year, 'Month': rain.index.month,
+                       'rain': rain.values})
+    df['Period'] = df['Month'].map(month_to_period)
+
+    transitions, first_days = [], []
+    for p in range(1, len(periods) + 1):
+        wet_wet = wet_total = dry_wet = dry_total = 0
+        firsts = []
+        for _, g in df[df['Period'] == p].groupby('Year'):
+            x = g['rain'].to_numpy()
+            wet = ((x > 0) & (x >= threshold)).astype(int)
+            for t in range(len(wet) - 1):
+                if wet[t] == 1:
+                    wet_total += 1
+                    wet_wet += wet[t + 1]
+                else:
+                    dry_total += 1
+                    dry_wet += wet[t + 1]
+            rainy = np.where(wet == 1)[0]
+            if len(rainy) > 0:
+                firsts.append(int(rainy[0]))
+        transitions.append((wet_wet / wet_total if wet_total else 0.,
+                            dry_wet / dry_total if dry_total else 0.))
+        first_days.append(firsts)
+
+    return {'periods': periods, 'transitions': transitions,
+            'first_days': first_days}
+
+
+def synthetic_rain_year_markov(total_rain, rainy_days, alpha, markov,
+                               leap_year=False, rng=None):
+    """Daily synthetic rain for one year, with the rainy days placed by a\
+        two-state Markov chain.
+
+    Same as synthetic_rain_year (same total rain, rainy days and alpha per\
+        period, amounts from the cascade), except for the choice of the\
+        rainy days. In each period: the first rainy day is drawn from the\
+        historical first rainy days (`markov['first_days']`), then the\
+        chain walks day by day with the period transition probabilities\
+        until the rainy days are complete; if the period ends before, the\
+        missing days are drawn at random among the remaining days after the\
+        first one (or among all the days of the period if there are not\
+        enough). The cascade pieces are placed at random on the chosen days.\
+        Unlike the uniform placement, it reproduces the clustering of the\
+        observed rainy days (see notebooks/lluvia/lluvia_modelo_corregido).
+
+    Args:
+        total_rain (array): Total rain per period.
+        rainy_days (array): Rainy days per period (can be non integer).
+        alpha (array): Alpha per period.
+        markov (dict): Output of markov_climatology (defines the periods).
+        leap_year (bool): True for a 366 days year.
+        rng (np.random.Generator, optional): Random generator.
+
+    Returns:
+        np_array: Daily rain, 365 or 366 days.
+    """
+    rng = np.random.default_rng(rng)
+    total_rain = np.asarray(total_rain, dtype=float)
+    rainy_days = np.asarray(rainy_days, dtype=float)
+    alpha = np.asarray(alpha, dtype=float)
+
+    day_indices = period_day_indices(markov['periods'], leap_year)
+    if not (len(total_rain) == len(rainy_days) == len(alpha) == len(day_indices)):
+        raise ValueError("total_rain, rainy_days y alpha deben tener un valor por periodo.")
+
+    serie = np.zeros(366 if leap_year else 365)
+
+    for p, days in enumerate(day_indices):
+        n = min(int(round(rainy_days[p])), len(days))
+        if n == 0 or total_rain[p] <= 0:
+            continue
+        firsts = markov['first_days'][p]
+        if not firsts:
+            raise ValueError(f"El periodo {p + 1} no tiene dias de lluvia en la climatologia.")
+        first = min(firsts[rng.integers(len(firsts))], len(days) - 1)
+        p_ww, p_wd = markov['transitions'][p]
+
+        chosen = [first]
+        state = 1                                   # the first day is rainy
+        d = first + 1
+        while len(chosen) < n and d < len(days):
+            state = 1 if rng.random() < (p_ww if state == 1 else p_wd) else 0
+            if state == 1:
+                chosen.append(d)
+            d += 1
+
+        if len(chosen) < n:
+            remaining = [x for x in range(first + 1, len(days)) if x not in chosen]
+            missing = n - len(chosen)
+            if len(remaining) < missing:
+                remaining = [x for x in range(len(days)) if x not in chosen]
+            chosen.extend(rng.choice(remaining, missing, replace=False).tolist())
+
+        pieces = cascade(total_rain[p], alpha[p], n, 1, rng)[0]
+        rng.shuffle(pieces)
+        serie[days[np.array(chosen[:n])]] = pieces
+
+    return serie
+
+
 def synthetic_rain_series(start_year, end_year, total_rain, rainy_days, alpha,
-                          periods='Q', rng=None):
+                          periods='Q', rng=None, markov=None):
     """Daily synthetic rain from 1 January of start_year to 31 December of\
         end_year, taking into account the leap years.
+
+    Args:
+        markov (dict, optional): Output of markov_climatology. If given, the\
+            rainy days are placed by the Markov chain\
+            (synthetic_rain_year_markov) and `periods` is taken from it;\
+            otherwise they are placed uniformly (synthetic_rain_year).
 
     Returns:
         np_array: Daily rain, one value per day of the interval.
     """
     rng = np.random.default_rng(rng)
+    if markov is not None:
+        return np.concatenate([
+            synthetic_rain_year_markov(total_rain, rainy_days, alpha, markov,
+                                       calendar.isleap(year), rng)
+            for year in range(start_year, end_year + 1)
+        ])
     return np.concatenate([
         synthetic_rain_year(total_rain, rainy_days, alpha, periods,
                             calendar.isleap(year), rng)
