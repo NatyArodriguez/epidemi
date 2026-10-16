@@ -584,6 +584,200 @@ def synthetic_rain_year_markov(total_rain, rainy_days, alpha, markov,
     return serie
 
 
+def _day_months(leap_year=False):
+    """Calendar month (1-12) of each day of the year."""
+    return pd.date_range('2000-01-01' if leap_year else '2001-01-01',
+                         periods=366 if leap_year else 365).month.to_numpy()
+
+
+def synthetic_rain_year_markov_weighted(total_rain, rainy_days, alpha, markov,
+                                        weights, leap_year=False, rng=None):
+    """Daily synthetic rain for one year: Markov placement with monthly\
+        weights inside each period.
+
+    Same period parameters as synthetic_rain_year_markov (total rain, rainy\
+        days and alpha per period, one cascade per period, persistence of the\
+        period chain), but the rain is distributed among the months of each\
+        period with two sets of monthly weights:
+
+    - frequency: in month m the chain has stationary probability of a rainy\
+        day pi_P*w_m (pi_P of the period chain) and the same persistence\
+        r = P(wet|wet) - P(wet|dry) as the period: P(wet|wet) = pi_m + r(1 - pi_m),\
+        P(wet|dry) = pi_m(1 - r). The missing days (if the chain ends before)\
+        are drawn with probability proportional to w_m.
+    - intensity: the cascade pieces, from largest to smallest, go to the\
+        chosen days with probability proportional to v_m (without\
+        replacement), so heavier months receive the larger pieces.
+
+    With all weights equal to 1 the placement is that of\
+        synthetic_rain_year_markov (not bit to bit: the random numbers are\
+        used in a different order). Weights are fitted with\
+        calibrate_monthly_weights.
+
+    Args:
+        total_rain, rainy_days, alpha (array): One value per period.
+        markov (dict): Output of markov_climatology (defines the periods).
+        weights (dict): 'frequency' and 'intensity', arrays of 12 values\
+            (calendar months).
+        leap_year (bool): True for a 366 days year.
+        rng (np.random.Generator, optional): Random generator.
+
+    Returns:
+        np_array: Daily rain, 365 or 366 days.
+    """
+    rng = np.random.default_rng(rng)
+    total_rain = np.asarray(total_rain, dtype=float)
+    rainy_days = np.asarray(rainy_days, dtype=float)
+    alpha = np.asarray(alpha, dtype=float)
+    w_freq = np.asarray(weights['frequency'], dtype=float)
+    w_int = np.asarray(weights['intensity'], dtype=float)
+
+    day_indices = period_day_indices(markov['periods'], leap_year)
+    if not (len(total_rain) == len(rainy_days) == len(alpha) == len(day_indices)):
+        raise ValueError("total_rain, rainy_days y alpha deben tener un valor por periodo.")
+    month = _day_months(leap_year)
+
+    serie = np.zeros(366 if leap_year else 365)
+
+    for p, days in enumerate(day_indices):
+        n = min(int(round(rainy_days[p])), len(days))
+        if n == 0 or total_rain[p] <= 0:
+            continue
+        m = month[days] - 1                         # month (0-11) of each day of the period
+        p_ww, p_wd = markov['transitions'][p]
+        pi, r = p_wd / (1. - p_ww + p_wd), p_ww - p_wd
+        pi_m = np.clip(pi * w_freq, 1e-4, 0.999)
+        ww_m, wd_m = pi_m + r * (1. - pi_m), pi_m * (1. - r)
+
+        firsts = markov['first_days'][p]
+        if not firsts:
+            raise ValueError(f"El periodo {p + 1} no tiene dias de lluvia en la climatologia.")
+        first = min(firsts[rng.integers(len(firsts))], len(days) - 1)
+        chosen = [first]
+        state = 1
+        d = first + 1
+        while len(chosen) < n and d < len(days):
+            mm = m[d]
+            state = 1 if rng.random() < (ww_m[mm] if state == 1 else wd_m[mm]) else 0
+            if state == 1:
+                chosen.append(d)
+            d += 1
+
+        if len(chosen) < n:
+            remaining = np.array([x for x in range(first + 1, len(days)) if x not in chosen], dtype=int)
+            missing = n - len(chosen)
+            if len(remaining) < missing:
+                remaining = np.array([x for x in range(len(days)) if x not in chosen], dtype=int)
+            prob = w_freq[m[remaining]]
+            chosen.extend(rng.choice(remaining, missing, replace=False, p=prob / prob.sum()).tolist())
+        chosen = np.array(chosen[:n])
+
+        pieces = np.sort(cascade(total_rain[p], alpha[p], n, 1, rng)[0])[::-1]
+        free = list(range(n))
+        w_day = w_int[m[chosen]]
+        target = np.empty(n, dtype=int)
+        for k in range(n):                          # largest piece first
+            prob = w_day[free]
+            j = rng.choice(len(free), p=prob / prob.sum())
+            target[k] = free.pop(j)
+        serie[days[chosen[target]]] = pieces
+
+    return serie
+
+
+def monthly_fractions(rain, periods='Q'):
+    """Pooled fraction of the rainy days and of the rain of each period that\
+        falls in each of its months.
+
+    Args:
+        rain (pd.Series): Daily rain with a DatetimeIndex.
+        periods: 'M', 'Q' or list of lists of months.
+
+    Returns:
+        tuple: (days, rain), arrays of 12 values (calendar months); each\
+            period sums 1.
+    """
+    periods = _get_periods(periods)
+    df = pd.DataFrame({'Month': rain.index.month, 'rain': rain.values})
+    by_month = df.groupby('Month')['rain'].agg(total='sum', days=lambda x: (x > 0).sum())
+    f_days, f_rain = np.zeros(12), np.zeros(12)
+    for months in periods:
+        idx = np.array(months) - 1
+        t = by_month.loc[months, 'total'].to_numpy(float)
+        dd = by_month.loc[months, 'days'].to_numpy(float)
+        f_rain[idx] = t / t.sum() if t.sum() > 0 else 1. / len(months)
+        f_days[idx] = dd / dd.sum() if dd.sum() > 0 else 1. / len(months)
+    return f_days, f_rain
+
+
+def calibrate_monthly_weights(rain, table, markov, n_iter=15, n_rep=30,
+                              step=0.8, rng=None):
+    """Monthly weights of synthetic_rain_year_markov_weighted that reproduce\
+        the observed monthly fractions inside each period.
+
+    Simulates every year of `table` with its own period parameters and\
+        updates the weights multiplicatively,\
+        w <- w*(observed/simulated)**step, until the pooled fractions of\
+        rainy days (frequency weights) and of rain (intensity weights) of\
+        each month match monthly_fractions(rain). Weights are normalized to\
+        mean 1 inside each period.
+
+    Args:
+        rain (pd.Series): Daily rain (observed), for the target fractions.
+        table (pd.DataFrame): Year, Period, TotalRain, RainyDays, Alpha (e.g.\
+            fit_alpha_table output, same periods as `markov`). Missing alpha\
+            -> median of the period.
+        markov (dict): Output of markov_climatology.
+        n_iter (int): Iterations.
+        n_rep (int): Realizations per year and iteration.
+        step (float): Exponent of the multiplicative update (damping).
+        rng (np.random.Generator, optional): Random generator.
+
+    Returns:
+        dict: 'frequency' and 'intensity' (arrays of 12), and 'fit': pooled\
+            simulated fractions (days, rain) with the final weights.
+    """
+    rng = np.random.default_rng(rng)
+    periods = markov['periods']
+    obs_days, obs_rain = monthly_fractions(rain, periods)
+    years = sorted(table['Year'].unique())
+    alpha_med = table.groupby('Period')['Alpha'].median()
+    params = {}
+    for y in years:
+        f = table[table['Year'] == y].set_index('Period').reindex(range(1, len(periods) + 1))
+        al = f['Alpha'].to_numpy(float)
+        al = np.where(np.isnan(al), alpha_med.reindex(range(1, len(periods) + 1)).to_numpy(), al)
+        params[y] = (f['TotalRain'].to_numpy(float), f['RainyDays'].to_numpy(float), al)
+
+    def simulate(weights, n):
+        acc_days, acc_rain = np.zeros(12), np.zeros(12)
+        for y in years:
+            leap = calendar.isleap(y)
+            month = _day_months(leap) - 1
+            for _ in range(n):
+                s = synthetic_rain_year_markov_weighted(*params[y], markov, weights, leap, rng)
+                np.add.at(acc_days, month, s > 0)
+                np.add.at(acc_rain, month, s)
+        f_days, f_rain = np.zeros(12), np.zeros(12)
+        for months in periods:
+            idx = np.array(months) - 1
+            f_days[idx] = acc_days[idx] / acc_days[idx].sum()
+            f_rain[idx] = acc_rain[idx] / acc_rain[idx].sum()
+        return f_days, f_rain
+
+    weights = {'frequency': np.ones(12), 'intensity': np.ones(12)}
+    for _ in range(n_iter):
+        f_days, f_rain = simulate(weights, n_rep)
+        weights['frequency'] = weights['frequency'] * (obs_days / f_days) ** step
+        weights['intensity'] = np.maximum(weights['intensity'] * (obs_rain / f_rain) ** step, 1e-4)
+        for months in periods:
+            idx = np.array(months) - 1
+            for k in ('frequency', 'intensity'):
+                weights[k][idx] = weights[k][idx] / weights[k][idx].mean()
+    weights['fit'] = simulate(weights, n_rep)
+    return weights
+
+
 def synthetic_rain_series(start_year, end_year, total_rain, rainy_days, alpha,
                           periods='Q', rng=None, markov=None):
     """Daily synthetic rain from 1 January of start_year to 31 December of\

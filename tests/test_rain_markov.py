@@ -56,3 +56,36 @@ def test_markov_agrupa_mas_que_uniforme(clima):
     m = np.mean([p_ll_ll(rm.synthetic_rain_year_markov(*args, clima, False, rng=r)) for r in range(50)])
     u = np.mean([p_ll_ll(rm.synthetic_rain_year(*args, 'Q', False, rng=r)) for r in range(50)])
     assert m > u + 0.1
+
+
+def test_pesos_mensuales_conserva_y_unos(clima):
+    total = np.array([400., 80., 10., 300.])
+    dias = np.array([30, 15, 3, 25])
+    alpha = np.array([0.3, 0.4, 0.5, 0.35])
+    pesos = {'frequency': np.linspace(0.5, 1.5, 12), 'intensity': np.linspace(1.5, 0.5, 12)}
+    for leap in (False, True):
+        s = rm.synthetic_rain_year_markov_weighted(total, dias, alpha, clima, pesos, leap, rng=3)
+        assert len(s) == (366 if leap else 365)
+        for q, idx in enumerate(rm.period_day_indices('Q', leap)):
+            assert s[idx].sum() == pytest.approx(total[q])
+            assert (s[idx] > 0).sum() == dias[q]
+    # con pesos 1, mismo agrupamiento que el generador de Markov
+    unos = {'frequency': np.ones(12), 'intensity': np.ones(12)}
+    def p_ll_ll(s):
+        w = (s > 0).astype(int)
+        return ((w[:-1] == 1) & (w[1:] == 1)).sum() / (w[:-1] == 1).sum()
+    a = np.mean([p_ll_ll(rm.synthetic_rain_year_markov_weighted(total, dias, alpha, clima, unos, False, rng=r)) for r in range(80)])
+    b = np.mean([p_ll_ll(rm.synthetic_rain_year_markov(total, dias, alpha, clima, False, rng=r)) for r in range(80)])
+    assert abs(a - b) < 0.03
+
+
+def test_pesos_mensuales_mueven_la_lluvia(clima):
+    # mas peso de intensidad en diciembre -> mas lluvia de oct-dic en diciembre
+    total, dias, alpha = [400., 80., 10., 300.], [30, 15, 3, 25], [0.3, 0.4, 0.5, 0.35]
+    idx = rm.period_day_indices('M', False)
+    def frac_dic(v_dic):
+        v = np.ones(12); v[11] = v_dic
+        pesos = {'frequency': np.ones(12), 'intensity': v}
+        return np.mean([rm.synthetic_rain_year_markov_weighted(total, dias, alpha, clima, pesos, False, rng=r)[idx[11]].sum()
+                        for r in range(60)]) / 300.
+    assert frac_dic(4.) > 1.4 * frac_dic(1.)
