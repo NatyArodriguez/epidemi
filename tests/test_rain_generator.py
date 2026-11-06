@@ -47,9 +47,19 @@ def test_temporada_julio_junio():
     mk = rg.markov_climatology(rain, 'Q', 0.)
     tabla = rg.aggregate_rain(rain, 'Q', 0.)
     tabla['Alpha'] = 0.4                       # alpha fijo: evita el ajuste (lento)
-    s = rg.synthetic_rain_season(tabla, 2016, mk, rg.WEIGHTS_ORAN, realization=3)
+    s = rg.synthetic_rain_season(2016, realization=3, table=tabla, markov=mk)
     assert s.index[0] == pd.Timestamp('2015-07-01') and s.index[-1] == pd.Timestamp('2016-06-30')
     obs = rain.loc['2015-07-01':'2016-06-30']
     for q in (1, 2, 3, 4):
         a, b = s[s.index.quarter == q], obs[obs.index.quarter == q]
         assert np.isclose(a.sum(), b.sum()) and (a > 0).sum() == (b > 0).sum()
+
+
+def test_tabla_del_paquete():
+    tabla = rg.load_quarterly_table()
+    obs = rg.aggregate_rain(rg.load_daily_rain(), 'Q', 0.)
+    assert np.allclose(tabla[['TotalRain', 'RainyDays']].to_numpy(), obs[['TotalRain', 'RainyDays']].to_numpy())
+    a = rg.synthetic_rain_season(2010, realization=1)
+    b = rg.synthetic_rain_season(2010, realization=1, table=tabla,
+                                 markov=rg.markov_climatology(rg.load_daily_rain(), 'Q', 0.), weights=rg.WEIGHTS_ORAN)
+    assert a.equals(b)

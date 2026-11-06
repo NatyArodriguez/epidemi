@@ -21,24 +21,36 @@ reproducir el reparto observado entre los meses de cada trimestre (abr-jun:
 Modulo autocontenido: solo usa numpy y pandas. El codigo de las funciones es
 el mismo de epidemi.core.rain_model (se verifica en tests/test_rain_generator.py).
 
-Uso basico (un año con los parametros de un año observado):
+Datos (en epidemi/data/, o donde se guarden):
+  - oran_diaria_98_22.txt: lluvia diaria observada (columnas day y rain), para
+    la cadena de Markov (markov_climatology).
+  - tabla_lluvia_trimestral.txt: lluvia total, dias de lluvia y alpha por año
+    y trimestre 2000-2022, la tabla de los trabajos. Se obtuvo con
+    fit_alpha_table(aggregate_rain(rain, 'Q', 0.), alphas=ALPHAS_EXTENDED,
+    min_rainy_days=2, rng=1); recalcularla da exactamente la misma tabla.
 
-    import numpy as np
+Uso basico:
+
     import rain_generator as rg
 
-    rain = rg.load_daily_rain('oran_diaria_98_22.txt', 2000, 2022)
+    rain = rg.load_daily_rain('oran_diaria_98_22.txt')
     markov = rg.markov_climatology(rain, 'Q', 0.)
-    # alpha por año y trimestre, con las opciones de los trabajos (lento: ~minutos)
-    tabla = rg.fit_alpha_table(rg.aggregate_rain(rain, 'Q', 0.), alphas=rg.ALPHAS_EXTENDED,
-                               min_rainy_days=2, rng=1)
-    total, dias, alpha = rg.year_parameters(tabla, 2016)
+    tabla = rg.load_quarterly_table('tabla_lluvia_trimestral.txt')
+
+    # Temporada julio-junio (2009 = jul-2008 a jun-2009) con los parametros de
+    # sus cuatro trimestres, como el escenario base de los trabajos:
+    temporada = rg.synthetic_rain_season(2009, realization=0, table=tabla,
+                                         markov=markov)
+
+    # Un año calendario con sus parametros:
+    total, dias, alpha = rg.year_parameters(2016, tabla)
     serie = rg.synthetic_rain_year_paired(total, dias, alpha, markov,
                                           rg.WEIGHTS_ORAN, leap_year=True,
                                           seed=[16000, 2016, 0, 2016])
 
-    # Temporada julio-junio (2009 = jul-2008 a jun-2009) con los parametros de sus
-    # cuatro trimestres, como el escenario base de los trabajos:
-    temporada = rg.synthetic_rain_season(tabla, 2009, markov, rg.WEIGHTS_ORAN, realization=0)
+Dentro del paquete epidemi, load_daily_rain() y load_quarterly_table() sin
+argumentos leen los archivos de epidemi/data/, y synthetic_rain_season(2009)
+usa esos archivos y WEIGHTS_ORAN si no se le pasan table, markov ni weights.
 
 Convencion de semillas de los trabajos (realizaciones emparejadas): cada
 trimestre se genera con su propio generador aleatorio,
@@ -139,6 +151,27 @@ def load_daily_rain(path=None, start_year=2000, end_year=2022):
     data['day'] = pd.to_datetime(data['day'])
     rain = data.set_index('day')['rain']
     return rain.loc[str(start_year):str(end_year)]
+
+
+def load_quarterly_table(path=None):
+    """Quarterly table of the papers: total rain, rainy days and alpha per year\
+        and quarter, 2000-2022 (tabla_lluvia_trimestral.txt).
+
+    It is the output of fit_alpha_table(aggregate_rain(rain, 'Q', 0.),\
+        alphas=ALPHAS_EXTENDED, min_rainy_days=2, rng=1); Alpha is nan for\
+        quarters without rain or with a single rainy day.
+
+    Args:
+        path (str, optional): Path of the file. If None, the file of the\
+            epidemi package (epidemi/data/tabla_lluvia_trimestral.txt).
+
+    Returns:
+        pd.DataFrame: Columns Year | Period | TotalRain | RainyDays | MeanRain |\
+            RainVar | Alpha.
+    """
+    if path is None:
+        path = Path(__file__).resolve().parents[1] / 'data' / 'tabla_lluvia_trimestral.txt'
+    return pd.read_table(path, sep='\t')
 
 def aggregate_rain(rain, periods='Q', threshold=0.):
     """Total rain, rainy days and variance of the rain on rainy days, for\
@@ -701,7 +734,7 @@ def calibrate_monthly_weights(rain, table, markov, n_iter=15, n_rep=30,
     weights['fit'] = simulate(weights, n_rep)
     return weights
 
-def year_parameters(table, year, typical_alpha_q3=True):
+def year_parameters(year, table=None, typical_alpha_q3=True):
     """Period parameters of an observed year, as used in the papers.
 
     Alpha missing (periods without rain or with a single rainy day) is\
@@ -710,13 +743,16 @@ def year_parameters(table, year, typical_alpha_q3=True):
         fit) is always the median of that period.
 
     Args:
-        table (pd.DataFrame): Output of fit_alpha_table (quarterly).
         year (int): Calendar year.
+        table (pd.DataFrame, optional): Quarterly table (load_quarterly_table\
+            or fit_alpha_table output). If None, load_quarterly_table().
         typical_alpha_q3 (bool): Use the median alpha for Jul-Sep.
 
     Returns:
         tuple: (total_rain, rainy_days, alpha), arrays of one value per period.
     """
+    if table is None:
+        table = load_quarterly_table()
     med = table.groupby('Period')['Alpha'].median()
     f = table[table['Year'] == year].set_index('Period').sort_index()
     total = f['TotalRain'].to_numpy(float)
@@ -759,8 +795,8 @@ def synthetic_rain_year_paired(total_rain, rainy_days, alpha, markov, weights,
     return serie
 
 
-def synthetic_rain_season(table, season, markov, weights, realization=0, base_seed=16000,
-                          typical_alpha_q3=True):
+def synthetic_rain_season(season, realization=0, table=None, markov=None, weights=None,
+                          base_seed=16000, typical_alpha_q3=True):
     """Synthetic rain of a July-June season with the parameters of its four\
         quarters (Jul-Sep and Oct-Dec of season - 1, Jan-Mar and Apr-Jun of\
         season), as the baseline of the papers.
@@ -771,20 +807,29 @@ def synthetic_rain_season(table, season, markov, weights, realization=0, base_se
         generator per quarter).
 
     Args:
-        table (pd.DataFrame): Output of fit_alpha_table (quarterly).
         season (int): Season, e.g. 2009 = July 2008 to June 2009.
-        markov (dict): Output of markov_climatology.
-        weights (dict): 'frequency' and 'intensity' (e.g. WEIGHTS_ORAN).
         realization (int): Realization number (0, 1, 2, ...).
+        table (pd.DataFrame, optional): Quarterly table. If None,\
+            load_quarterly_table().
+        markov (dict, optional): Output of markov_climatology. If None, from\
+            load_daily_rain() (2000-2022, quarters, threshold 0).
+        weights (dict, optional): 'frequency' and 'intensity'. If None,\
+            WEIGHTS_ORAN.
         base_seed (int): First element of the seed (16000 in the papers).
         typical_alpha_q3 (bool): Median alpha for Jul-Sep (see year_parameters).
 
     Returns:
         pd.Series: Daily rain from July 1 of season - 1 to June 30 of season.
     """
+    if table is None:
+        table = load_quarterly_table()
+    if markov is None:
+        markov = markov_climatology(load_daily_rain(), 'Q', 0.)
+    if weights is None:
+        weights = WEIGHTS_ORAN
     parts = []
     for year in (season - 1, season):
-        total, days, alpha = year_parameters(table, year, typical_alpha_q3)
+        total, days, alpha = year_parameters(year, table, typical_alpha_q3)
         parts.append(synthetic_rain_year_paired(total, days, alpha, markov, weights,
                                                 calendar.isleap(year),
                                                 [base_seed, season, realization, year]))
@@ -794,19 +839,13 @@ def synthetic_rain_season(table, season, markov, weights, realization=0, base_se
 
 
 if __name__ == '__main__':
-    # Ejemplo: un año típico (mediana de los parametros 2000-2022 por trimestre).
-    # Para no ajustar alpha (~1 min), se usan las medianas por trimestre de los alpha 2000-2022
-    # obtenidos con fit_alpha_table(aggregate_rain(rain, 'Q', 0.), alphas=ALPHAS_EXTENDED,
-    # min_rainy_days=2, rng=1); recalcularlas da exactamente estos valores.
-    rain = load_daily_rain()
-    markov = markov_climatology(rain, 'Q', 0.)
-    tabla = aggregate_rain(rain, 'Q')
-    total = tabla.groupby('Period')['TotalRain'].median().to_numpy()
-    dias = tabla.groupby('Period')['RainyDays'].median().to_numpy()
-    alpha = np.array([0.38, 0.46, 0.465, 0.41])
-    s = synthetic_rain_year_paired(total, dias, alpha, markov, WEIGHTS_ORAN, False, [0])
-    meses = _day_months(False)
-    print('Total por trimestre (objetivo / sintetico):')
-    for q, months in enumerate(QUARTERS):
-        print(f'  Q{q + 1}: {total[q]:7.1f} / {s[np.isin(meses, months)].sum():7.1f} mm,'
-              f' dias {dias[q]:.0f} / {(s[np.isin(meses, months)] > 0).sum()}')
+    # Ejemplo: temporada 2016 (jul-2015 a jun-2016), realizacion 0, con los archivos
+    # de epidemi/data/; compara los parametros de cada trimestre con la serie sintetica.
+    tabla = load_quarterly_table()
+    s = synthetic_rain_season(2016, realization=0, table=tabla)
+    print('Temporada 2016, total y dias de lluvia por trimestre (tabla / sintetico):')
+    for (anio, q) in ((2015, 3), (2015, 4), (2016, 1), (2016, 2)):
+        f = tabla[(tabla.Year == anio) & (tabla.Period == q)].iloc[0]
+        x = s[(s.index.year == anio) & (s.index.quarter == q)]
+        print(f'  {anio} T{q}: {f.TotalRain:7.1f} / {x.sum():7.1f} mm,'
+              f' dias {f.RainyDays:.0f} / {(x > 0).sum()}')
