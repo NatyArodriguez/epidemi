@@ -14,14 +14,25 @@ A. Balance humano, con el criterio de `Main.c` (poblacion constante):
 B. Contador de casos: `G_T` aplica el mismo umbral que la ecuacion
    (`Tmin < NO_INFECCION`: sin infeccion vector -> humano) y usa `MIObh`
    (probabilidad de infeccion del humano) en lugar de `MIObv`.
-D. Mortalidad acuatica por frio: con `Tmin < Temp_ACUATICA` sobrevive por dia
-   la fraccion `SUPERVIVENCIA_ACUATICA` (0.6, `SUV` de `def_oran.c`) de huevos
-   humedos, larvas y pupas: se agrega la perdida `(1 - SUV)*X` a la derivada.
+D. Mortalidad acuatica por frio: con `Tmin < Temp_ACUATICA` se agrega a la
+   derivada de huevos humedos, larvas y pupas la perdida `(1 - SUV)*X`, es
+   decir una TASA de 0.4/dia (`SUPERVIVENCIA_ACUATICA` = 0.6, `SUV` de
+   `def_oran.c`). Como tasa continua, en un dia frio sobrevive e^-0.4 ~ 0.67,
+   no 0.6: en `Main.c` (y en Valdez et al. 2018, con 0.5) es una fraccion que
+   se aplica una vez al final del dia.
    Antes se multiplicaba toda la derivada por `MUERTE_ACUATICA` (0.5), lo que
    frenaba la dinamica en lugar de aumentar la mortalidad.
 E. Mortalidad de adultas por frio: con `Tmin < MATAR_VECTORES` (12.5 C) las
    adultas mueren a la tasa `MUERTE_FRIO_ADULTAS` (0.5/dia, `EFECT_V` de
-   `def_oran.c`) en lugar de `2*mu_V`.
+   `def_oran.c`) en lugar de `2*mu_V`. Como tasa sobrevive e^-0.5 ~ 0.61 por
+   dia; en `Main.c` muere la fraccion 0.5 del dia.
+
+Mojado de huevos: `egg_wet(R)` (Valdez et al. 2018; maximo 0.8) entra en la ODE
+como TASA (`fR*E_D`), no como la fraccion diaria de Valdez y `Main.c`: en un dia
+de lluvia fuerte se moja como maximo 1 - e^-0.8 ~ 55% de los huevos secos, no
+80%. Es una eleccion de modelo en tiempo continuo (opcion A, nov-2026). Con las
+fracciones diarias cambian k y la magnitud de los efectos de la lluvia con frio,
+no su signo (`notebooks/lluvia/sensibilidad_implementacion.ipynb`).
 
 F. Umbral de la infeccion humano -> vector: `Tmin < NO_INFECCION` (antes
    `Tmean`), igual que la direccion vector -> humano. `Main.c` no tiene umbral
@@ -49,12 +60,14 @@ from epidemi.core.utils import (
     rate_VE, muerte_V, calculo_EV, runge, cases,
 )
 
-# Fraccion de huevos humedos, larvas y pupas que sobrevive un dia con
-# Tmin < Temp_ACUATICA (SUV de def_oran.c). Reemplaza a MUERTE_ACUATICA.
+# SUV de def_oran.c: fraccion que sobrevive un dia frio en Main.c. Aca define la
+# tasa de perdida (1 - SUV) = 0.4/dia con Tmin < Temp_ACUATICA (supervivencia
+# e^-0.4 ~ 0.67 por dia). Reemplaza a MUERTE_ACUATICA.
 SUPERVIVENCIA_ACUATICA = 0.6
 
 # Tasa de mortalidad de adultas en un dia con Tmin < MATAR_VECTORES (EFECT_V
-# de def_oran.c). Reemplaza a mu_V = 2*mu_V.
+# de def_oran.c, que en Main.c es la fraccion que muere en el dia; aca tasa,
+# supervivencia e^-0.5 ~ 0.61). Reemplaza a mu_V = 2*mu_V.
 MUERTE_FRIO_ADULTAS = 0.5
 
 
@@ -88,6 +101,7 @@ def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
 
     beta_day_theta_0 = beta_day*theta_T(Tm)
 
+    # tasa de mojado [1/dia] (en Valdez 2018 y Main.c, fraccion diaria; ver docstring)
     fR      = egg_wet(rain)
 
     KL      = hogares*( Kmax*H_t/Hmax + 1.0 )
@@ -135,7 +149,7 @@ def modelo(v,t,EV,H_t,Tmean,Tmin,Rain,CasosImp,beta_day, Kmax):
 
     deltaI = RATE_CASOS_IMP*CasosImp[tt]
 
-    # D: perdida diaria por frio en la fase acuatica (0 si Tmin >= Temp_ACUATICA)
+    # D: tasa de perdida por frio en la fase acuatica, 0.4/dia (0 si Tmin >= Temp_ACUATICA)
     if (Tmin < Temp_ACUATICA):
         mu_frio = 1. - SUPERVIVENCIA_ACUATICA
     else:
